@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Daily Work Schedule</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      padding: 15px;
+      background-color: #f5f7fa;
+      color: #333;
+      line-height: 1.5;
+      font-size: 20px;
+      /* 顶部 spacer 使用 div, 保持 body padding 不变 */
+    }
+
+    .header-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      padding: 0 10px;
+    }
+    h2 { color: #2c3e50; font-size: 28px; margin: 0; }
+
+    /* 恢复漂亮日期框样式（Q5: A 原始大小） */
+    .sidebar-date-wrapper {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      width: 100%;
+      margin-top: 6px;
+      margin-bottom: 4px;
+    }
+    .sidebar-date {
+      font-size: 20px; /* 原始大小 */
+      color: #333;
+      font-weight: 700;
+      border: 2px solid #3498db;
+      padding: 8px 14px;
+      border-radius: 8px;
+      background: #ffffff;
+      display: inline-block;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    }
+
+    .date {
+      font-size: 20px;
+      color: #555;
+      font-weight: bold;
+      border: 2px solid #3498db;
+      padding: 8px 14px;
+      border-radius: 6px;
+      background: #fff;
+      display: inline-block;
+      margin: 0;
+    }
+    .refresh-btn {
+      padding: 10px 20px;
+      border-radius: 8px;
+      border: none;
+      background: #3498db;
+      color: white;
+      font-size: 16px;
+      font-weight: bold;
+      margin-right: 10px;
+      cursor: pointer;
+      box-shadow: 0 4px 8px rgba(52, 152, 219, 0.3);
+      transition: all 0.3s ease;
+    }
+    .refresh-btn:hover {
+      background: #2980b9;
+      box-shadow: 0 6px 12px rgba(52, 152, 219, 0.4);
+      transform: translateY(-2px);
+    }
+    .refresh-btn:active {
+      transform: translateY(0);
+      box-shadow: 0 2px 4px rgba(52, 152, 219, 0.3);
+    }
+    .container {
+      max-width: 100%;
+      margin: 0 auto;
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      padding: 20px;
+      overflow: hidden;
+    }
+    .schedule-container { display: flex; gap: 20px; margin-bottom: 12px; position: relative; }
+    .projects-sidebar {
+      width: 240px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .projects-sidebar h3 {
+      font-size: 20px;
+      margin-bottom: 6px;
+      text-align: center;
+    }
+
+    /* 将 projects-box 增高 15%（之前约 432 -> 432*1.15 ≈ 497） */
+    .projects-box {
+      background: #fff;
+      border-radius: 8px;
+      padding: 10px;
+      border: 2px solid #e6e6e6;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+      overflow-y: auto;
+      height: 497px; /* +15% 调整 */
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 6px;
+    }
+
+    .project {
+      padding: 12px 14px;
+      color: black;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 18px;
+      user-select: none;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+      transition: transform 0.15s, box-shadow 0.15s;
+      text-align: center;
+      border: 1px solid #ccc;
+      background: #fff;
+    }
+    .project:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.12); }
+    .project.dragging { opacity: 0.8; transform: scale(1.03); box-shadow: 0 6px 12px rgba(0,0,0,0.18); }
+
+    /* ---------- Fixed Tasks Grid 样式（田字 2x2） ---------- */
+    .fixed-grid {
+      width: 100%;
+      border-radius: 8px;
+      border: 2px solid #e6e6e6;
+      padding: 8px;
+      background: #fff;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: 8px;
+      align-items: center;
+      justify-items: center;
+      min-height: 140px; /* 加高一点以配合整体 +15% */
+    }
+    .fixed-task {
+      width: 100%;
+      height: 52px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      cursor: grab;
+      user-select: none;
+      border: 1px solid rgba(0,0,0,0.08);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+      transition: transform 0.08s ease, box-shadow 0.08s ease, opacity 0.12s ease;
+    }
+    .fixed-task:active { cursor: grabbing; }
+    .fixed-task[data-fixed="true"] { /* marker */ }
+
+    /* Q4B 颜色：Pending=奶茶、Outside=淡摩卡、Absent=淡灰、Leave=淡黄灰 */
+    .fixed-absent { background: #E8E8E8; color: #333; }
+    .fixed-leave { background: #F0F0E8; color: #333; }
+    .fixed-pending { background: #D7B8A7; color: #3a2f2b; } /* C3 */
+    .fixed-outside { background: #C9A78F; color: #3a2f2b; } /* 淡摩卡 */
+
+    .trash-box {
+      width: 100%;
+      height: 80px;
+      border: 2px dashed #ccc;
+      border-radius: 8px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 8px;
+      transition: all 0.2s ease;
+    }
+    .trash-box img {
+      width: 48px;
+      height: 48px;
+      object-fit: contain;
+      opacity: 0.7;
+    }
+    .trash-box.dragover {
+      border-color: #e74c3c;
+      background: #fdecea;
+    }
+
+    .schedule {
+      display: grid;
+      grid-template-columns: 10% repeat(16, 5.6%);
+      grid-auto-rows: minmax(45px, auto); /* 原 60px -> 压低25% */
+      gap: 2px;
+      width: 100%;
+      position: relative;
+    }
+    .header, .time-header {
+      color: white;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      border-radius: 4px;
+      padding: 9px; /* 原 12px -> 压低25% */
+      font-size: 20px;
+    }
+    .header { background: #3498db; }
+    .time-header { background: #2c3e50; }
+
+    .employee-name {
+      background: none;
+      color: #333;
+      font-weight: bold;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 7px; /* 原 10px -> 压低25% */
+      border-radius: 6px;
+      border: 2px solid #ccc;
+      font-size: 15px; /* 原 20px -> 压低25% */
+      min-height: 37px; /* 原 50px -> 压低25% */
+    }
+
+    @keyframes breatheYellow {
+      0%,100% { box-shadow: 0 0 4.5px 1.5px rgba(255, 255, 0, 0.4); }
+      50% { box-shadow: 0 0 15px 4.5px rgba(255, 255, 0, 0.8); }
+    }
+    @keyframes breatheCyan {
+      0%,100% { box-shadow: 0 0 4.5px 1.5px rgba(0, 255, 255, 0.2); }
+      50% { box-shadow: 0 0 15px 4.5px rgba(0,255,255,0.4); }
+    }
+    .breathe-yellow { animation: breatheYellow 2.5s ease-in-out infinite; }
+    .breathe-cyan { animation: breatheCyan 2.5s ease-in-out infinite; }
+
+    .cell {
+      background: #f9f9f9;
+      border: 1px solid #e0e0e0;
+      min-height: 37px; /* 原 50px -> 压低25% */
+      position: relative;
+      border-radius: 4px;
+      transition: background-color 0.2s;
+      padding: 3px; /* 原 4px -> 压低25% */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .cell.highlight { background-color: #e8f4fd; border: 1px dashed #3498db; }
+    .cell.selected { background-color: #d4edda; border: 2px solid #28a745; }
+    .cell.occupied { background-color: #fff8e1; }
+    .cell.break { background-color: #ddd !important; pointer-events: none; color: #555; font-weight: bold; }
+
+    .assigned-project {
+      padding: 4.5px 7.5px; /* 压低25% */
+      color: black;
+      border-radius: 4px;
+      font-size: 13.5px; /* 压低25% */
+      user-select: none;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      cursor: pointer;
+      text-align: center;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      z-index: 1;
+      border: 1px solid #ccc;
+      transition: font-size 0.2s ease;
+      white-space: normal;
+      overflow-wrap: break-word;
+      word-break: break-word;
+      box-sizing: border-box;
+      pointer-events: auto;
+      line-height: 1.05;
+    }
+    .assigned-project.merged { position: absolute; z-index: 3; box-sizing: border-box; }
+
+    .input-area {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 10px;
+    }
+    .text-input {
+      flex: 0 0 60%;
+      min-width: 220px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      border: 2px solid #d0d7de;
+      font-size: 18px;
+      outline: none;
+      background: #fff;
+    }
+    .submit-btn {
+      flex: 0 0 auto;
+      padding: 12px 20px;
+      border-radius: 8px;
+      border: none;
+      background: #3498db;
+      color: white;
+      font-size: 18px;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+    }
+    .submit-btn:active { transform: translateY(1px); }
+
+    @media (max-width: 900px) {
+      .projects-sidebar { width: 200px; }
+      .text-input { font-size: 16px; }
+      .projects-box { height: 440px; } /* responsive adjust */
+      .fixed-grid { min-height: 120px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- spacer：增加自然留白（约 40px），滚动一下会把标题滑走 -->
+  <div style="height:40px; width:100%;"></div>
+
+  <div class="container">
+    <div class="header-bar">
+      <button class="refresh-btn" id="refreshBtn">Refresh Task Sidebar</button>
+      <h2>Daily Work Schedule</h2>
+      <div style="width:120px;"></div>
+    </div>
+
+    <div class="schedule-container">
+      <div class="projects-sidebar">
+        <!-- Date（替换"可分配项目"） -->
+        <div class="sidebar-date-wrapper" aria-hidden="false">
+          <div id="todayDateSidebar" class="sidebar-date">Date：</div>
+        </div>
+
+        <!-- ---------- 新增：Fixed Tasks Grid（2x2） ---------- -->
+        <div class="fixed-grid" id="fixedGrid" aria-label="固定任务区">
+          <div class="fixed-task fixed-absent" id="fixed_absent" data-fixed="true" draggable="true">Absent</div>
+          <div class="fixed-task fixed-leave" id="fixed_leave" data-fixed="true" draggable="true">Leave</div>
+          <div class="fixed-task fixed-pending" id="fixed_pending" data-fixed="true" draggable="true">Pending</div>
+          <div class="fixed-task fixed-outside" id="fixed_outside" data-fixed="true" draggable="true">Outside</div>
+        </div>
+
+        <!-- 原有项目列表 -->
+        <div class="projects-box" id="projectsBox">
+          <div id="projects"></div>
+        </div>
+
+        <div class="trash-box" id="trashBox">
+          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA..." alt="trash icon (placeholder)" />
+        </div>
+      </div>
+
+      <div class="schedule" id="schedule"></div>
+    </div>
+
+    <div class="input-area">
+      <input id="newTaskInput" class="text-input" placeholder="Enter new task（Exp：Customer Name (009999-10)），press Submit to generate task block " />
+      <button id="submitTask" class="submit-btn">Submit</button>
+    </div>
+  </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const schedule = document.getElementById('schedule');
+  const projectsContainer = document.getElementById('projects');
+  const projectsBox = document.getElementById('projectsBox');
+  const todayDate = document.getElementById('todayDateSidebar');
+  const newTaskInput = document.getElementById('newTaskInput');
+  const submitTask = document.getElementById('submitTask');
+  const trashBox = document.getElementById('trashBox');
+  const refreshBtn = document.getElementById('refreshBtn');
+
+  // fixed tasks
+  const fixedAbsent = document.getElementById('fixed_absent');
+  const fixedLeave = document.getElementById('fixed_leave');
+  const fixedPending = document.getElementById('fixed_pending');
+  const fixedOutside = document.getElementById('fixed_outside');
+
+  const today = new Date();
+  todayDate.innerText = 'Date：' + today.toLocaleDateString('zh-CN');
+
+  const hours = ['8:30','9:30','10:30','11:30','12:00','1:00','2:00','3:00','4:00','5:00','5:30','6:00','7:00','8:00','9:00','10:00'];
+  const breakCols = [4, 10];
+
+  const emptyHeader = document.createElement('div');
+  emptyHeader.className = 'header';
+  emptyHeader.innerText = 'Name/Time';
+  schedule.appendChild(emptyHeader);
+
+  hours.forEach((h) => {
+    const th = document.createElement('div');
+    th.className = 'time-header';
+    th.innerText = h;
+    schedule.appendChild(th);
+  });
+
+  const employees = [
+    { id: 'emp1', name: 'Seah' },
+    { id: 'emp2', name: 'Chay' },
+    { id: 'emp3', name: 'Poh' },
+    { id: 'emp4', name: 'Albert' },
+    { id: 'emp5', name: 'Aung' }, 
+    { id: 'emp6', name: 'Chin' },
+    { id: 'emp7', name: 'Bunyau' },
+    { id: 'emp8', name: 'Edika' },
+    { id: 'emp9', name: 'Han' },
+    { id: 'emp10', name: 'Luna' },
+    { id: 'emp11', name: 'Myo' },
+    { id: 'emp12', name: 'Piang' }, 
+    { id: 'emp13', name: 'Terrence' },
+    { id: 'emp14', name: 'Wai Phyo' }, 
+    { id: 'emp15', name: 'William' },
+    { id: 'emp16', name: 'Yu Jun' } 
+  ];
+
+  // usage count for templates created via Submit
+  const projectUsageCount = {}; // { projectId: count }
+
+  employees.forEach((emp, rowIndex) => {
+    const empDiv = document.createElement('div');
+    empDiv.className = 'employee-name';
+    empDiv.innerText = emp.name;
+
+    if(['Seah','Chay'].includes(emp.name)) empDiv.classList.add('breathe-yellow');
+    if(['Poh','Albert','Aung Thant','Chin'].includes(emp.name)) empDiv.classList.add('breathe-cyan');
+
+    schedule.appendChild(empDiv);
+    hours.forEach((hour, colIndex) => {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.row = rowIndex;
+      cell.dataset.col = colIndex;
+      if (breakCols.includes(colIndex)) {
+        cell.classList.add('break');
+        cell.innerText = '🍜';
+      }
+      schedule.appendChild(cell);
+    });
+  });
+
+  const pastelColors = ['#FFB3BA','#FFDFBA','#FFFFBA','#BAFFC9','#C2F0FC','#BAE1FF','#E0BBE4',];
+  let projectCodeColorMap = {};
+  let colorIndex = 0;
+
+  let selectedCell=null;
+  let dragInfo=null;
+
+  // 添加GAS任务前缀标识符
+  const GAS_TASK_PREFIX = 'gas_task_';
+
+  function createProjectElement(project, insertAtTop=false, generated=false){
+    const projectDiv=document.createElement('div');
+    projectDiv.className='project';
+    projectDiv.id=project.id;
+    projectDiv.innerText=project.name;
+    projectDiv.setAttribute('draggable','true');
+    if(generated) projectDiv.dataset.generated='true';
+    
+    // 如果是GAS任务，添加特殊属性防止删除
+    if(project.id.startsWith(GAS_TASK_PREFIX)) {
+      projectDiv.dataset.gasTask = 'true';
+    }
+
+    const codeMatch=project.name.match(/\((\d+)-/);
+    if(codeMatch){
+      const code=codeMatch[1];
+      if(!projectCodeColorMap[code]){
+        projectCodeColorMap[code]=pastelColors[colorIndex%pastelColors.length];
+        colorIndex++;
+      }
+      if(projectCodeColorMap[code]){
+        projectDiv.style.background=projectCodeColorMap[code];
+      }
+    }
+
+    projectDiv.addEventListener('dragstart',function(e){
+      if(!selectedCell||selectedCell.classList.contains('break')){
+        e.preventDefault(); return;
+      }
+      dragInfo={project:projectDiv,startCell:selectedCell,cells:[],projectId:project.id,projectName:project.name, source:'left'};
+      e.dataTransfer.setData('text/plain',e.target.id);
+      e.target.classList.add('dragging');
+      const clone=e.target.cloneNode(true);
+      clone.style.fontSize=(parseFloat(window.getComputedStyle(e.target).fontSize)*0.85)+"px";
+      clone.style.padding="6px";
+      clone.style.width=(e.target.offsetWidth*0.85)+"px";
+      clone.style.height=(e.target.offsetHeight*0.85)+"px";
+      clone.style.opacity="0.8";
+      clone.style.borderRadius="4px";
+      clone.style.position="absolute";
+      clone.style.top="-9999px";
+      clone.style.left="-9999px";
+      clone.style.zIndex="9999";
+      document.body.appendChild(clone);
+      e.dataTransfer.setDragImage(clone,Math.round(clone.offsetWidth/2),Math.round(clone.offsetHeight/2));
+      setTimeout(()=>clone.remove(),0);
+    });
+
+    projectDiv.addEventListener('dragend',function(){
+      if(dragInfo && dragInfo.source === 'left' && (!dragInfo.created || (dragInfo.cells && dragInfo.cells.length===0))){
+        if(dragInfo.cells && dragInfo.cells.length>0){
+          dragInfo.cells.forEach(c=>c.classList.remove('occupied'));
+        }
+        dragInfo = null;
+      }
+      this.classList.remove('dragging');
+    });
+
+    if(insertAtTop && projectsContainer.firstChild){
+      projectsContainer.insertBefore(projectDiv,projectsContainer.firstChild);
+    }else{
+      projectsContainer.appendChild(projectDiv);
+    }
+    return projectDiv;
+  }
+
+  // NEW: fetch tasks from GAS and refresh every 5 minutes
+  const GAS_URL = 'https://script.google.com/macros/s/AKfycbwIDNWCnAQPKOqRxjKBmqj8U3_adcRrlRXIs1WRPY-P5PMxyZRYw8LmVC6k_7rKodrc/exec'; // <-- 把你刚 deploy 的 Web App URL 放这里
+
+  async function refreshTasks(){
+    try{
+      const res = await fetch(GAS_URL);
+      const tasks = await res.json();
+      // 删除所有GAS任务（让自动刷新正常工作）
+      projectsContainer.querySelectorAll('.project[data-gas-task="true"]').forEach(el=>{
+        el.remove();
+      });
+      // 创建新任务 block，使用特殊前缀标识GAS任务
+      tasks.forEach((task, idx)=>{
+        const project = { id: GAS_TASK_PREFIX + idx, name: task };
+        createProjectElement(project, false, true);
+      });
+    }catch(err){
+      console.error('Failed to fetch tasks from GAS:', err);
+    }
+  }
+
+  // initial fetch
+  refreshTasks();
+  // 每 5 分钟刷新一次
+  setInterval(refreshTasks, 5*60*1000);
+  
+  // Refresh button click event
+  refreshBtn.addEventListener('click', function() {
+    refreshTasks();
+    // 添加简单的点击反馈
+    this.style.transform = 'scale(0.95)';
+    setTimeout(() => {
+      this.style.transform = 'scale(1)';
+    }, 150);
+  });
+
+  // create fixed tasks' drag behavior (they are in DOM already as fixed-xxx)
+  [fixedAbsent, fixedLeave, fixedPending, fixedOutside].forEach(el=>{
+    el.addEventListener('dragstart', function(e){
+      // dragging a fixed task -> behave like left-source but mark source='fixed'
+      if(!selectedCell||selectedCell.classList.contains('break')){ e.preventDefault(); return; }
+      dragInfo = {
+        project: el,
+        startCell: selectedCell,
+        cells: [],
+        projectId: el.id,
+        projectName: el.innerText,
+        source: 'fixed'
+      };
+      e.dataTransfer.setData('text/plain', el.id);
+      el.classList.add('dragging');
+
+      // FIX: use controlled clone size so it won't become super large while dragging
+      const elStyle = window.getComputedStyle(el);
+      const elFont = parseFloat(elStyle.fontSize) || 14;
+      const clone = el.cloneNode(true);
+      // scale clone to 85% of original to keep it visually consistent
+      clone.style.fontSize = (elFont * 0.85) + "px";
+      clone.style.padding = "6px";
+      clone.style.width = Math.round(el.offsetWidth * 0.85) + "px";
+      clone.style.height = Math.round(el.offsetHeight * 0.85) + "px";
+      clone.style.opacity = "0.85";
+      clone.style.borderRadius = "6px";
+      clone.style.position = "absolute";
+      clone.style.top = "-9999px";
+      clone.style.left = "-9999px";
+      clone.style.zIndex = "9999";
+      document.body.appendChild(clone);
+      e.dataTransfer.setDragImage(clone, Math.round(clone.offsetWidth/2), Math.round(clone.offsetHeight/2));
+      setTimeout(()=>clone.remove(),0);
+    });
+    el.addEventListener('dragend', function(){
+      // cleanup
+      if(dragInfo && dragInfo.source === 'fixed' && (!dragInfo.created || (dragInfo.cells && dragInfo.cells.length===0))){
+        if(dragInfo.cells && dragInfo.cells.length>0) dragInfo.cells.forEach(c=>c.classList.remove('occupied'));
+        dragInfo = null;
+      }
+      el.classList.remove('dragging');
+    });
+  });
+
+  const allCells=document.querySelectorAll('.cell');
+  allCells.forEach(cell=>{
+    if(cell.classList.contains('break'))return;
+    cell.addEventListener('click',function(){
+      if(selectedCell)selectedCell.classList.remove('selected');
+      selectedCell=this;
+      this.classList.add('selected');
+    });
+    cell.addEventListener('dragover',function(e){
+      e.preventDefault();
+      if(dragInfo&&selectedCell){highlightCells(selectedCell,this);}
+    });
+    cell.addEventListener('dragleave',function(){
+      setTimeout(()=>{if(!isDraggingOverAnyCell())clearHighlights();},50);
+    });
+    cell.addEventListener('drop',function(e){
+      e.preventDefault();
+      if(dragInfo&&dragInfo.cells.length>0){
+        // If dragged from left templates or fixed, create merged projects
+        if(dragInfo.source === 'left' || dragInfo.source === 'fixed'){
+          dragInfo.created = true;
+          createMergedProject(dragInfo);
+        } else if(dragInfo.source === 'merged' && dragInfo.mergedElement){
+          // moving existing merged block to new pos
+          const movedMerged = dragInfo.mergedElement;
+          const oldStart = parseInt(movedMerged.dataset.startCol);
+          const oldEnd = parseInt(movedMerged.dataset.endCol);
+          const oldRow = movedMerged.dataset.row;
+          for(let c=oldStart;c<=oldEnd;c++){
+            const oldCell = document.querySelector(`.cell[data-row="${oldRow}"][data-col="${c}"]`);
+            if(oldCell) oldCell.classList.remove('occupied');
+          }
+          movedMerged.remove();
+          // create new merged block using same projectId/source info
+          createMergedProject({...dragInfo, projectId: movedMerged.dataset.sourceId || null, projectName: movedMerged.dataset.projectName || movedMerged.innerText, source: movedMerged.dataset.sourceId ? 'left' : 'fixed'});
+        }
+        dragInfo=null;
+        if(selectedCell){selectedCell.classList.remove('selected');selectedCell=null;}
+      }
+      clearHighlights();
+    });
+  });
+
+  function isDraggingOverAnyCell(){
+    return Array.from(allCells).some(cell=>cell.matches(':hover')||cell.querySelector(':hover'));
+  }
+  function highlightCells(startCell,endCell){
+    clearHighlights();
+    if(!startCell||!endCell)return;
+    const row=startCell.dataset.row;
+    if(row!==endCell.dataset.row)return;
+    let start=parseInt(startCell.dataset.col);
+    let end=parseInt(endCell.dataset.col);
+    if(end<start)[start,end]=[end,start];
+    const validCells=[];
+    for(let c=start;c<=end;c++){
+      if(breakCols.includes(c))continue;
+      const cell=document.querySelector(`.cell[data-row="${row}"][data-col="${c}"]`);
+      if(cell){cell.classList.add('highlight');validCells.push(cell);}
+    }
+    dragInfo.cells=validCells;
+  }
+  function clearHighlights(){
+    document.querySelectorAll('.cell.highlight').forEach(cell=>cell.classList.remove('highlight'));
+  }
+  function createMergedProject(dragInfo){
+    if(!dragInfo||dragInfo.cells.length===0)return;
+    dragInfo.cells=dragInfo.cells.filter(c=>!breakCols.includes(parseInt(c.dataset.col)));
+    if(dragInfo.cells.length===0)return;
+    dragInfo.cells.sort((a,b)=>parseInt(a.dataset.col)-parseInt(b.dataset.col));
+    const row=dragInfo.cells[0].dataset.row;
+    const startCol=parseInt(dragInfo.cells[0].dataset.col);
+    const endCol=parseInt(dragInfo.cells[dragInfo.cells.length-1].dataset.col);
+    let segment=[];let segments=[];
+    for(let c=startCol;c<=endCol;c++){
+      if(breakCols.includes(c)){
+        if(segment.length>0){segments.push(segment);segment=[];}
+      }else{
+        const cell=document.querySelector(`.cell[data-row="${row}"][data-col="${c}"]`);
+        if(cell)segment.push(cell);
+      }
+    }
+    if(segment.length>0)segments.push(segment);
+    segments.forEach(seg=>{
+      const tempInfo={...dragInfo,cells:seg};
+      makeOneMergedBlock(tempInfo);
+    });
+  }
+  function makeOneMergedBlock(dragInfo){
+    if(dragInfo.cells.length===0)return;
+    dragInfo.cells.sort((a,b)=>parseInt(a.dataset.col)-parseInt(b.dataset.col));
+    const row=dragInfo.cells[0].dataset.row;
+    const startCol=parseInt(dragInfo.cells[0].dataset.col);
+    const endCol=parseInt(dragInfo.cells[dragInfo.cells.length-1].dataset.col);
+
+    // mark cells occupied
+    dragInfo.cells.forEach(c=>c.classList.add('occupied'));
+
+    const merged=document.createElement('div');
+    merged.className='assigned-project merged';
+
+    // 字体/文本逻辑：1格只显示括号；2格完整；>=3格放大20%
+    const len = dragInfo.cells.length;
+    const fullName = dragInfo.projectName || (dragInfo.project && dragInfo.project.innerText) || '';
+    const parenMatch = fullName.match(/\([^\)]+\)/); // 包含括号
+    if(len === 1){
+      merged.innerText = parenMatch ? parenMatch[0] : fullName;
+      merged.style.fontSize = '13.5px';
+    } else if(len === 2){
+      merged.innerText = fullName;
+      merged.style.fontSize = '';
+    } else {
+      merged.innerText = fullName;
+      merged.style.fontSize = (13.5 * 1.2) + 'px';
+    }
+
+    merged.dataset.row = row;
+    merged.dataset.startCol = startCol;
+    merged.dataset.endCol = endCol;
+
+    // record source:
+    if(dragInfo.projectId){
+      merged.dataset.sourceId = dragInfo.projectId;
+      merged.dataset.projectName = fullName;
+      // 对于GAS任务，不增加使用计数（这样删除时不会影响左侧任务栏）
+      if(document.getElementById(dragInfo.projectId) && document.getElementById(dragInfo.projectId).dataset.generated === 'true' && !dragInfo.projectId.startsWith(GAS_TASK_PREFIX)){
+        if(!projectUsageCount[dragInfo.projectId]) projectUsageCount[dragInfo.projectId] = 0;
+        projectUsageCount[dragInfo.projectId] += 1;
+      }
+    }
+
+    // set background color if available
+    const codeMatch=fullName.match(/\((\d+)-/);
+    if(codeMatch&&projectCodeColorMap[codeMatch[1]]){
+      merged.style.background=projectCodeColorMap[codeMatch[1]];
+    } else {
+      // if source is fixed, use its background color
+      if(dragInfo.source === 'fixed' && dragInfo.project && dragInfo.project.classList){
+        merged.style.background = window.getComputedStyle(dragInfo.project).backgroundColor;
+      }
+    }
+
+    // make draggable for moving/deleting
+    merged.setAttribute('draggable','true');
+
+    // dragstart for merged block
+    merged.addEventListener('dragstart', function(e){
+      dragInfo = {
+        source: 'merged',
+        mergedElement: this,
+        cells: dragInfo && dragInfo.cells ? dragInfo.cells.slice() : [],
+        projectId: this.dataset.sourceId || null,
+        projectName: this.dataset.projectName || this.innerText,
+      };
+      e.dataTransfer.setData('text/plain','merged');
+      this.classList.add('dragging');
+      const clone = this.cloneNode(true);
+      clone.style.fontSize = (parseFloat(window.getComputedStyle(this).fontSize) * 0.8) + "px";
+      clone.style.padding = "6px";
+      clone.style.width = (this.offsetWidth / 2) + "px";
+      clone.style.height = (this.offsetHeight / 2) + "px";
+      clone.style.opacity = "0.8";
+      clone.style.borderRadius = "4px";
+      clone.style.position = "absolute";
+      clone.style.top = "-9999px";
+      clone.style.left = "-9999px";
+      clone.style.zIndex = "9999";
+      document.body.appendChild(clone);
+      e.dataTransfer.setDragImage(clone, clone.offsetWidth / 2, clone.offsetHeight / 2);
+      setTimeout(()=>clone.remove(),0);
+    });
+
+    merged.addEventListener('dragend', function(){
+      this.classList.remove('dragging');
+      dragInfo = null;
+    });
+
+    // click to remove merged block
+    merged.addEventListener('click',function(e){
+      e.stopPropagation();
+      
+      const row=this.dataset.row;
+      const start=parseInt(this.dataset.startCol);
+      const end=parseInt(this.dataset.endCol);
+      for(let c=start;c<=end;c++){
+        const cell=document.querySelector(`.cell[data-row="${row}"][data-col="${c}"]`);
+        if(cell)cell.classList.remove('occupied');
+      }
+      
+      // 对于GAS任务，只删除排班表上的块，不影响左侧任务栏
+      const srcId = this.dataset.sourceId;
+      if(srcId && !srcId.startsWith(GAS_TASK_PREFIX) && projectUsageCount[srcId]){
+        // 只有非GAS任务才处理使用计数
+        projectUsageCount[srcId] = Math.max(0, projectUsageCount[srcId]-1);
+        // 只有非GAS任务且使用次数为0时才删除左侧任务栏中的项目
+        if(projectUsageCount[srcId] === 0){
+          const leftEl = document.getElementById(srcId);
+          if(leftEl && leftEl.dataset && leftEl.dataset.generated === 'true'){
+            leftEl.remove();
+          }
+        }
+      }
+      this.remove();
+    });
+
+    const first=dragInfo.cells[0];
+    const last=dragInfo.cells[dragInfo.cells.length-1];
+    const firstRect=first.getBoundingClientRect();
+    const lastRect=last.getBoundingClientRect();
+    const schedRect=schedule.getBoundingClientRect();
+    const rawLeft=firstRect.left-schedRect.left;
+    const rawWidth=lastRect.right-firstRect.left;
+    const top=firstRect.top-schedRect.top;
+    const height=firstRect.height;
+    merged.style.left=rawLeft+'px';
+    merged.style.width=rawWidth+'px';
+    merged.style.top=top+'px';
+    merged.style.height=height+'px';
+
+    schedule.appendChild(merged);
+  }
+
+  // existing submit/new task logic unchanged
+  submitTask.addEventListener('click',function(){
+    const val=newTaskInput.value.trim();
+    if(!val)return;
+    const id='project_new_'+Date.now(); // 不使用GAS前缀
+    const project={id:id,name:val};
+    const newEl = createProjectElement(project,true,true);
+    newEl.scrollIntoView({behavior:'smooth', block:'nearest'});
+    newTaskInput.value='';
+    projectsBox.scrollTop=0;
+  });
+  newTaskInput.addEventListener('keydown',function(e){
+    if(e.key==='Enter'){e.preventDefault();submitTask.click();}
+  });
+
+  // TRASH behavior: respects fixed tasks rules
+  trashBox.addEventListener('dragover',function(e){
+    e.preventDefault();
+    this.classList.add('dragover');
+  });
+  trashBox.addEventListener('dragleave',function(){
+    this.classList.remove('dragover');
+  });
+  trashBox.addEventListener('drop',function(e){
+    e.preventDefault();
+    this.classList.remove('dragover');
+
+    // CASE A: merged block being dropped into trash -> delete THAT merged block only (B2)
+    if(dragInfo && dragInfo.source === 'merged' && dragInfo.mergedElement){
+      const mergedEl = dragInfo.mergedElement;
+      const start = parseInt(mergedEl.dataset.startCol);
+      const end = parseInt(mergedEl.dataset.endCol);
+      const row = mergedEl.dataset.row;
+      for(let c=start;c<=end;c++){
+        const cell = document.querySelector(`.cell[data-row="${row}"][data-col="${c}"]`);
+        if(cell) cell.classList.remove('occupied');
+      }
+      
+      // 对于GAS任务，只删除排班表上的块，不影响左侧任务栏
+      const srcId = mergedEl.dataset.sourceId;
+      if(srcId && !srcId.startsWith(GAS_TASK_PREFIX) && projectUsageCount[srcId]){
+        // 只有非GAS任务才处理使用计数
+        projectUsageCount[srcId] = Math.max(0, projectUsageCount[srcId]-1);
+        if(projectUsageCount[srcId] === 0){
+          const leftEl = document.getElementById(srcId);
+          if(leftEl && leftEl.dataset && leftEl.dataset.generated === 'true'){
+            leftEl.remove();
+          }
+        }
+      }
+      mergedEl.remove();
+      dragInfo = null;
+      clearHighlights();
+      return;
+    }
+
+    // CASE B: left-side template dropped into trash
+    if(dragInfo && dragInfo.source === 'left' && dragInfo.project){
+      const leftEl = dragInfo.project;
+      // If it's a fixed template, do NOT delete (cancel)
+      if(leftEl.dataset && leftEl.dataset.fixed === 'true'){
+        if(dragInfo.cells && dragInfo.cells.length>0) dragInfo.cells.forEach(c=>c.classList.remove('occupied'));
+        dragInfo = null;
+        clearHighlights();
+        return;
+      }
+      // 如果是GAS任务，不允许删除
+      if(leftEl.dataset && leftEl.dataset.gasTask === 'true') {
+        if(dragInfo.cells && dragInfo.cells.length>0) dragInfo.cells.forEach(c=>c.classList.remove('occupied'));
+        dragInfo = null;
+        clearHighlights();
+        return; // GAS任务不可删除
+      }
+      
+      if(leftEl.dataset && leftEl.dataset.generated === 'true'){
+        const projId = leftEl.id;
+        leftEl.remove();
+        document.querySelectorAll('.assigned-project.merged').forEach(m=>{
+          if(m.dataset.sourceId === projId){
+            const r = m.dataset.row;
+            const s = parseInt(m.dataset.startCol);
+            const e = parseInt(m.dataset.endCol);
+            for(let c=s;c<=e;c++){
+              const cell = document.querySelector(`.cell[data-row="${r}"][data-col="${c}"]`);
+              if(cell) cell.classList.remove('occupied');
+            }
+            m.remove();
+          }
+        });
+        delete projectUsageCount[projId];
+      } else {
+        if(dragInfo.cells && dragInfo.cells.length>0) dragInfo.cells.forEach(c=>c.classList.remove('occupied'));
+      }
+      dragInfo = null;
+      clearHighlights();
+      return;
+    }
+
+    // CASE C: fixed left template dragged to trash -> ignore (cannot delete fixed)
+    if(dragInfo && dragInfo.source === 'fixed' && dragInfo.project){
+      if(dragInfo.cells && dragInfo.cells.length>0) dragInfo.cells.forEach(c=>c.classList.remove('occupied'));
+      dragInfo = null;
+      clearHighlights();
+      return;
+    }
+
+    // fallback: clear any temporary occupied marks
+    if(dragInfo && dragInfo.cells && dragInfo.cells.length>0){
+      dragInfo.cells.forEach(c=>c.classList.remove('occupied'));
+    }
+    dragInfo = null;
+    clearHighlights();
+  });
+
+  // end DOMContentLoaded
+});
+  </script>
+</body>
+</html>
